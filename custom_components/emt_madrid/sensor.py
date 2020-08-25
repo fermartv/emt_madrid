@@ -38,21 +38,22 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the sensor platform."""
     email = config.get(CONF_EMT_EMAIL)
     password = config.get(CONF_EMT_PASSWORD)
-    stop = config.get(CONF_STOP)
+    bus_stop = config.get(CONF_STOP)
     line = config.get(CONF_LINE)
-    emt_api = EMTLogin(email, password)
-    bus_stop = BusStop(emt_api, stop, line)
-    add_entities([BusStopSensor(emt_api, bus_stop)])
+    api_emt = APIEMT(email, password)
+    api_emt.update(bus_stop, line)
+    add_entities([BusStopSensor(api_emt, bus_stop, line)])
 
 
 class BusStopSensor(Entity):
     """Representation of a Sensor."""
 
-    def __init__(self, emt_api, bus_stop):
+    def __init__(self, api_emt, bus_stop, line):
         """Initialize the sensor."""
         self._state = None
-        self._emt_api = emt_api
+        self._api_emt = api_emt
         self._bus_stop = bus_stop
+        self._bus_line = line
 
     @property
     def name(self):
@@ -62,7 +63,7 @@ class BusStopSensor(Entity):
     @property
     def state(self):
         """Return the state of the sensor."""
-        return self._state
+        return self._api_emt.get_stop_data(self._bus_line, "arrival")
 
     @property
     def unit_of_measurement(self):
@@ -73,10 +74,10 @@ class BusStopSensor(Entity):
         """Fetch new state data for the sensor.
         This is the only method that should fetch new data for Home Assistant.
         """
-        self._state = self._bus_stop.stop_arrival_time()[0]
+        self._api_emt.update(self._bus_stop, self._bus_line)
 
 
-class EMTLogin:
+class APIEMT:
     """
     Interface for the EMT REST API from https://apidocs.emtmadrid.es/
     """
@@ -85,7 +86,31 @@ class EMTLogin:
         self._user = user
         self._password = password
         self.token = self.update_token()
-        # self.token = Throttle(10000)(self.update_token)
+
+    def update(self, stop, line=None):
+        url = BASE_URL + ENDPOINT_ARRIVAL_TIME + stop + "/arrives/"
+        headers = {"accessToken": self.token}
+        data = {"stopId": stop, "Text_EstimationsRequired_YN": "Y"}
+        response = self.api_call(url, headers, data)
+        self.set_stop_data(response)
+
+    def set_stop_data(self, data):
+        arrival_data = {}
+
+        for bus in data["data"][0]["Arrive"]:
+            estimated_time = math.trunc(bus["estimateArrive"] / 60)
+            if estimated_time > 30:
+                estimated_time = 30
+            line = bus["line"]
+            if line not in arrival_data:
+                arrival_data[line] = {"arrival": estimated_time}
+            else:
+                arrival_data[line]["next_arrival"] = estimated_time
+        self._arrival_time = arrival_data
+
+    def get_stop_data(self, line, bus):
+        """ Get the data of the next bus ("arrival") or the one after that ("next_arrival") """
+        return self._arrival_time[str(line)][bus]
 
     def api_call(self, url, headers, payload=None, method="POST"):
         if method == "POST":
@@ -117,28 +142,3 @@ class EMTLogin:
     def check_token_expiration(self):
         pass
 
-
-class BusStop:
-    """
-    Bus stop object
-    """
-
-    def __init__(self, emt_login, stop, line):
-        self.emt_login = emt_login
-        self.stop = stop
-        self.line = line
-        self.token = self.emt_login.token
-
-    def stop_arrival_time(self):
-        url = BASE_URL + ENDPOINT_ARRIVAL_TIME + self.stop + "/arrives/"
-        headers = {"accessToken": self.emt_login.token}
-        data = {"stopId": self.stop, "Text_EstimationsRequired_YN": "Y"}
-        response = self.emt_login.api_call(url, headers, data)
-        arrival_time = []
-
-        for bus in response["data"][0]["Arrive"]:
-            estimated_time = math.trunc(bus["estimateArrive"] / 60)
-            if estimated_time > 30:
-                estimated_time = 30
-            arrival_time.append(estimated_time)
-        return arrival_time
