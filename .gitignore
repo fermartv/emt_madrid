@@ -1,0 +1,14 @@
+/.HA_VERSION
+/.cloud
+/.storage
+/.vscode
+/automations.yaml
+/configuration.yaml
+/deps
+/groups.yaml
+/home-assistant.log
+/home-assistant_v2.db
+/scenes.yaml
+/scripts.yaml
+/secrets.yaml
+/tts

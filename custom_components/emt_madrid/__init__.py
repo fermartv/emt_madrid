@@ -1,0 +1,1 @@
+"""Madrid EMT bus sensor."""
