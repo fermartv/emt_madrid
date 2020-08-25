@@ -12,3 +12,4 @@
 /scripts.yaml
 /secrets.yaml
 /tts
+/custom_components/emt_madrid/__pycache__
