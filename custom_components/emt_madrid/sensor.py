@@ -124,14 +124,18 @@ class APIEMT:
         self._password = password
         self.token = self.update_token()
 
-    def update(self, stop, line=None):
+    def update(self, stop, line):
         url = "{}{}{}/arrives/{}/".format(BASE_URL, ENDPOINT_ARRIVAL_TIME, stop, line)
         headers = {"accessToken": self.token}
         data = {"stopId": stop, "lineArrive": line, "Text_EstimationsRequired_YN": "Y"}
         response = self.api_call(url, headers, data)
-        self.set_stop_data(response)
+        try:
+            self.set_stop_data(response, line)
+        except:
+            _LOGGER.error("Invalid stop ID")
+            raise Exception("Unable to get the arrival times from the API")
 
-    def set_stop_data(self, data):
+    def set_stop_data(self, data, target_line):
         arrival_data = {}
 
         for bus in data["data"][0]["Arrive"]:
@@ -143,6 +147,11 @@ class APIEMT:
                 arrival_data[line] = {"arrival": estimated_time}
             elif "next_arrival" not in arrival_data[line]:
                 arrival_data[line]["next_arrival"] = estimated_time
+
+        if target_line not in arrival_data:
+            arrival_data[target_line] = {"arrival": "-"}
+        if "next_arrival" not in arrival_data[target_line]:
+            arrival_data[target_line]["next_arrival"] = "-"
         self._arrival_time = arrival_data
 
     def get_stop_data(self, line, bus):
@@ -168,14 +177,13 @@ class APIEMT:
         headers = {"email": self._user, "password": self._password}
         url = BASE_URL + ENDPOINT_LOGIN
         response = self.api_call(url, headers, None, "GET")
-        code = response["code"]
-        if code == "01":
+        try:
             self.token = response["data"][0]["accessToken"]
+        except:
+            if response["code"] == "80":
+                _LOGGER.error("Invalid credentials")
+            else:
+                _LOGGER.error("Unable to retrieve the token from the API")
+            raise Exception("Unable to connect to the API")
         return self.token
-
-    def check_result(self, response):
-        pass
-
-    def check_token_expiration(self):
-        pass
 
