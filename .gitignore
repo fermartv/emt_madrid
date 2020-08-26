@@ -13,3 +13,4 @@
 /secrets.yaml
 /tts
 /custom_components/emt_madrid/__pycache__
+*.pyc
