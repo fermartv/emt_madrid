@@ -141,7 +141,7 @@ class APIEMT:
         for bus in data["data"][0]["Arrive"]:
             estimated_time = math.trunc(bus["estimateArrive"] / 60)
             if estimated_time > 30:
-                estimated_time = "30"
+                estimated_time = 30
             line = bus["line"]
             if line not in arrival_data:
                 arrival_data[line] = {"arrival": estimated_time}
