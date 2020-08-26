@@ -9,6 +9,7 @@ import voluptuous as vol
 """Platform for sensor integration."""
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (
+    ATTR_ATTRIBUTION,
     CONF_EMAIL,
     CONF_ICON,
     CONF_MODE,
@@ -21,6 +22,7 @@ from homeassistant.const import (
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 
+ATTRIBUTION = "Data provided by EMT Madrid MobilityLabs"
 
 CONF_STOP = "stop"
 CONF_LINE = "line"
@@ -28,7 +30,9 @@ CONF_LINE = "line"
 DEFAULT_NAME = "EMT Madrid"
 DEFAULT_ICON = "mdi:bus"
 
-ATTR_NEXT_UP = "Later Bus"
+ATTR_NEXT_UP = "later_bus"
+ATTR_BUS_STOP = "bus_stop_id"
+ATTR_BUS_LINE = "bus_line"
 
 BASE_URL = "https://openapi.emtmadrid.es/"
 ENDPOINT_LOGIN = "v1/mobilitylabs/user/login/"
@@ -99,7 +103,10 @@ class BusStopSensor(Entity):
     def device_state_attributes(self):
         """Return the device state attributes."""
         return {
-            ATTR_NEXT_UP: self._api_emt.get_stop_data(self._bus_line, "next_arrival")
+            ATTR_NEXT_UP: self._api_emt.get_stop_data(self._bus_line, "next_arrival"),
+            ATTR_BUS_STOP: self._bus_stop,
+            ATTR_BUS_LINE: self._bus_line,
+            ATTR_ATTRIBUTION: ATTRIBUTION,
         }
 
     def update(self):
