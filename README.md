@@ -23,12 +23,13 @@ To use the EMT Mobilitylabs API you need to register in their [website](https://
    ```yaml
    # Example configuration.yaml entry
    sensor:
-   - platform: emt_madrid
+     - platform: emt_madrid
        email: !secret EMT_EMAIL
-       password: !secret EMT_PASSWORD
-       stop: "72"
-       line: "27"
-       name: "Bus 27 en Cibeles"
+        password: !secret EMT_PASSWORD
+        stop: "72"
+        line: "27"
+        name: "Bus 27 en Cibeles"
+        icon: "mdi:fountain"
    ```
 
 ### Configuration Variables
@@ -83,11 +84,10 @@ Once you have you sensor up and running it will update the data automatically ev
 
 ### Second bus sensor
 
-If you want to have a specific sensor to show the arrival time for the second bus, you can add the following lines to your `configuration.yaml` file. See the official Home Assistant [template sensor](https://www.home-assistant.io/integrations/template/) for more information.
+If you want to have a specific sensor to show the arrival time for the second bus, you can add the following lines to your `configuration.yaml` file below the `emt_madrid` bus sensor. See the official Home Assistant [template sensor](https://www.home-assistant.io/integrations/template/) for more information.
 
 ```yaml
 # Example configuration.yaml entry
-sensor:
  - platform: template
      sensors:
      siguiente_27:
