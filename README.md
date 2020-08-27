@@ -4,7 +4,9 @@ _Please :star: this repo if you find it useful_
 
 This is a custom sensor for Home Assistant that allows you tu have the waiting time for a specific Madrid-EMT bus stop. Each sensor will provide the arrival time for the next 2 buses of the line specified in the configuration.
 
-Thanks to [EMT Madrid MobilityLabs](https://mobilitylabs.emtmadrid.es/) for providing the data and documentation.
+Thanks to [EMT Madrid MobilityLabs](https://mobilitylabs.emtmadrid.es/) for providing the data and [documentation](https://apidocs.emtmadrid.es/).
+
+![Example](example.png)
 
 ## Prerequisites
 

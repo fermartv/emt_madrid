@@ -116,15 +116,17 @@ class BusStopSensor(Entity):
 
 class APIEMT:
     """
-    Interface for the EMT REST API from https://apidocs.emtmadrid.es/
+    Interface for the EMT REST API. Docs at https://apidocs.emtmadrid.es/
     """
 
     def __init__(self, user, password):
+        """ Initialize the class and retrieve the token from the API. """
         self._user = user
         self._password = password
         self.token = self.update_token()
 
     def update(self, stop, line):
+        """ Update the arrival times data from the API. """
         url = "{}{}{}/arrives/{}/".format(BASE_URL, ENDPOINT_ARRIVAL_TIME, stop, line)
         headers = {"accessToken": self.token}
         data = {"stopId": stop, "lineArrive": line, "Text_EstimationsRequired_YN": "Y"}
@@ -136,6 +138,14 @@ class APIEMT:
             raise Exception("Unable to get the arrival times from the API")
 
     def set_stop_data(self, data, target_line):
+        """ Create a dictionary to store the arrival time data in the following format:
+            {
+                line:{
+                    'arrival': arrival_time,
+                    'next_arrival': arrival_time
+                }
+            }
+         """
         arrival_data = {}
 
         for bus in data["data"][0]["Arrive"]:
@@ -159,6 +169,7 @@ class APIEMT:
         return self._arrival_time[str(line)][bus]
 
     def api_call(self, url, headers, payload=None, method="POST"):
+        """ Request data from the API. """
         if method == "POST":
             payload = json.dumps(payload)
             response = requests.post(url, data=payload, headers=headers)
@@ -174,6 +185,7 @@ class APIEMT:
         return response.json()
 
     def update_token(self):
+        """ Update or create the token when the sensor is initialized. """
         headers = {"email": self._user, "password": self._password}
         url = BASE_URL + ENDPOINT_LOGIN
         response = self.api_call(url, headers, None, "GET")
