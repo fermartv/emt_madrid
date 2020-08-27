@@ -1,0 +1,5 @@
+{
+  "name": "EMT-Madrid bus",
+  "country": "ES",
+  "domains": ["sensor"]
+}
