@@ -68,13 +68,13 @@ Once you have you sensor up and running it will update the data automatically ev
 
 **state**:\
  _(int)_\
- Arrival time in minutes for the next of the given line at the stop. It will show "-" when there are no more buses coming and 30 when the arrival time is over 30 minutes.
+ Arrival time in minutes for the next bus. It will show "-" when there are no more buses coming and 30 when the arrival time is over 30 minutes.
 
 ### Attributes
 
 **later_bus**:\
  _(int)_\
- Arrival time in minutes for the second bus of the given line at the stop. It will show "-" when there are no more buses coming and 30 when the arrival time is over 30 minutes.
+ Arrival time in minutes for the second bus. It will show "-" when there are no more buses coming and 30 when the arrival time is over 30 minutes.
 
 **bus_stop_id**:\
  _(int)_\
