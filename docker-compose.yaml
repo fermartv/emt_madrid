@@ -1,0 +1,13 @@
+version: '3.6'
+
+services:
+
+  homeassistant:
+    image: homeassistant/home-assistant:latest
+    container_name: homeassistant_dev
+    volumes:
+      - ./homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - ./custom_components:/config/custom_components
+    ports:
+      - 8124:8123
