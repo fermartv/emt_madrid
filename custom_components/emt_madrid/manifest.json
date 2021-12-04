@@ -1,0 +1,8 @@
+{
+  "domain": "emt_madrid",
+  "name": "EMT Madrid",
+  "documentation": "https://github.com/fermartv/EMT-Madrid/",
+  "issue_tracker": "https://github.com/fermartv/EMT-Madrid/issues",
+  "codeowners": ["@FerMartV"],
+  "version": "1.0.1"
+}
