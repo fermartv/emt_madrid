@@ -1,1 +1,1 @@
-"""Madrid EMT bus sensor."""
+"""EMT Madrid integration."""
