@@ -131,3 +131,8 @@ template:
         unit_of_measurement: "min"
         state: "{{ state_attr('sensor.bus_27_cibeles_casa_de_america', 'next_bus') }}"
 ```
+
+## Roadmap
+
+1. Move to fully async component.
+2. Add `unique_id` to allow modifying sensor names.
