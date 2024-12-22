@@ -10,6 +10,7 @@ BASE_URL = "https://openapi.emtmadrid.es/"
 ENDPOINT_LOGIN = "v1/mobilitylabs/user/login/"
 ENDPOINT_ARRIVAL_TIME = "v2/transport/busemtmad/stops/"
 ENDPOINT_STOP_INFO = "v1/transport/busemtmad/stops/"
+ENDPOINT_STOPS_ARROUND_STOP = "v2/transport/busemtmad/stops/arroundstop/"
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +62,16 @@ class APIEMT:
             response = self._make_request(url, headers=headers, data=data, method="GET")
             self._parse_stop_info(response)
 
+    def retry_update_stop_info(self):
+        """Update all the lines and information from the bus stop."""
+        stop_id = self._stop_info["bus_stop_id"]
+        url = f"{BASE_URL}{ENDPOINT_STOPS_ARROUND_STOP}{stop_id}/0/"
+        headers = {"accessToken": self._token}
+        data = {"idStop": stop_id}
+        if self._token != "Invalid token":
+            response = self._make_request(url, headers=headers, data=data, method="GET")
+            return response
+
     def get_stop_info(
         self,
     ):
@@ -70,8 +81,25 @@ class APIEMT:
     def _parse_stop_info(self, response):
         """Parse the stop info from the API response."""
         try:
-            if response.get("code") != "00":
+            response_code = response.get("code")
+            if response_code == "90":
                 _LOGGER.warning("Bus stop disabled or does not exist")
+            elif response_code == "80":
+                _LOGGER.warning("Invalid token")
+            elif response_code == "98":
+                _LOGGER.warning("API limit reached")
+            elif response_code == "81":
+                response = self.retry_update_stop_info()
+
+                stop_info = response["data"][0]
+                self._stop_info.update(
+                    {
+                        "bus_stop_name": stop_info["stopName"],
+                        "bus_stop_coordinates": stop_info["geometry"]["coordinates"],
+                        "bus_stop_address": stop_info["address"],
+                        "lines": self._parse_lines(stop_info["lines"], "basic"),
+                    }
+                )
             else:
                 stop_info = response["data"][0]["stops"][0]
                 self._stop_info.update(
@@ -79,32 +107,45 @@ class APIEMT:
                         "bus_stop_name": stop_info["name"],
                         "bus_stop_coordinates": stop_info["geometry"]["coordinates"],
                         "bus_stop_address": stop_info["postalAddress"],
-                        "lines": self._parse_lines(stop_info["dataLine"]),
+                        "lines": self._parse_lines(stop_info["dataLine"], "full"),
                     }
                 )
         except (KeyError, IndexError) as e:
             raise ValueError("Unable to get bus stop information") from e
 
-    def _parse_lines(self, lines):
+    def _parse_lines(self, lines, mode):
         """Parse the line info from the API response."""
-        line_info = {}
-        for line in lines:
-            line_number = line["label"]
-            line_info[line_number] = {
-                "destination": line["headerA"]
-                if line["direction"] == "A"
-                else line["headerB"],
-                "origin": line["headerA"]
-                if line["direction"] == "B"
-                else line["headerB"],
-                "max_freq": int(line["maxFreq"]),
-                "min_freq": int(line["minFreq"]),
-                "start_time": line["startTime"],
-                "end_time": line["stopTime"],
-                "day_type": line["dayType"],
-                "distance": [],
-                "arrivals": [],
-            }
+        if mode == "full":
+            line_info = {}
+            for line in lines:
+                line_number = line["label"]
+                line_info[line_number] = {
+                    "destination": line["headerA"]
+                    if line["direction"] == "A"
+                    else line["headerB"],
+                    "origin": line["headerA"]
+                    if line["direction"] == "B"
+                    else line["headerB"],
+                    "max_freq": int(line["maxFreq"]),
+                    "min_freq": int(line["minFreq"]),
+                    "start_time": line["startTime"],
+                    "end_time": line["stopTime"],
+                    "day_type": line["dayType"],
+                    "distance": [],
+                    "arrivals": [],
+                }
+        elif mode == "basic":
+            line_info = {}
+            for line in lines:
+                line_number = line["label"]
+                line_info[line_number] = {
+                    "destination": line["nameA"]
+                    if line["to"] == "A"
+                    else line["nameB"],
+                    "origin": line["nameA"] if line["to"] == "B" else line["nameB"],
+                    "distance": [],
+                    "arrivals": [],
+                }
         return line_info
 
     def update_arrival_times(self, stop):
