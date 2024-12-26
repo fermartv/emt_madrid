@@ -13,7 +13,19 @@ Thanks to [EMT Madrid MobilityLabs](https://mobilitylabs.emtmadrid.es/) for prov
 
 To use the EMT Mobilitylabs API you need to register in their [website](https://mobilitylabs.emtmadrid.es/). You have to provide a valid email account and a password that will be used to configure the sensor. Once you are registered you will receive a confirmation email to activate your account. It will not work until you have completed all the steps.
 
-## Manual Installation
+## Installation
+
+### HACS installation
+
+1. Open Home Assistant and go to HACS (Home Assistant Community Store).
+2. In HACS, go to the "Integrations" tab and click on the three dots in the top right corner.
+3. Select "Custom repositories" and enter the repository URL: `https://github.com/fermartv/emt_madrid`.
+4. Select the category as "Integration" and click "Add."
+5. Once the repository is added, search for "EMT-Madrid bus" in HACS and click "Install."
+6. Restart Home Assistant.
+
+
+### Manual installation
 
 1. Using the tool of choice open the directory for your HA configuration (where you find `configuration.yaml`).
 2. If you do not have a `custom_components` directory there, you need to create it.
@@ -21,7 +33,10 @@ To use the EMT Mobilitylabs API you need to register in their [website](https://
 4. Download _all_ the files from the `custom_components/emt_madrid/` directory in this repository.
 5. Place the files you downloaded in the new directory you created.
 6. Restart Home Assistant
-7. Add `emt_madrid` sensor to your `configuration.yaml` file:
+
+## Add sensor to Home Assistant
+
+Add `emt_madrid` sensor to your `configuration.yaml` file:
 
    ```yaml
    # Example configuration.yaml entry
@@ -62,7 +77,7 @@ _Default value: "mdi:bus"_
 
 ## Sensors, status and attributes
 
-Once you have the platform up and running, you will have one sensor per line specified. If no lines were provided, it'll create a sensor for each line in that stop ID. The name of the sensor will be automaticalle generated using the following structure: `Bus {line} - {stop_name}`.All the sensors will update the data automatically every minute and you should have the following data:
+Once you have the platform up and running, you will have one sensor per line specified. If no lines are provided, it will create a sensor for each line at that stop ID. The name of the sensor will be automatically generated using the following structure: Bus {line} - {stop_name}. All the sensors will update the data automatically every minute, and you should have the following data:
 
 **state**:\
  _(int)_\
@@ -79,31 +94,31 @@ Once you have the platform up and running, you will have one sensor per line spe
  Bus stop ID given in the configuration.
 
 **stop_name**:\
- _(int)_\
+ _(string)_\
  Bus stop name from EMT.
 
 **stop_address**:\
- _(int)_\
+ _(string)_\
  Bus stop address from EMT.
 
 **line**:\
- _(int)_\
+ _(string)_\
  Bus line.
 
 **destination**:\
- _(int)_\
+ _(string)_\
  Bus line last stop.
 
 **origin**:\
- _(int)_\
+ _(string)_\
  Bus line first stop.
 
 **start_time**:\
- _(int)_\
+ _(string)_\
  Time at which the first bus leaves the first stop.
 
 **end_time**:\
- _(int)_\
+ _(string)_\
  Time at which the last bus leaves the first stop.
 
 **max_frequency**:\
@@ -117,6 +132,30 @@ Once you have the platform up and running, you will have one sensor per line spe
 **distance**:\
  _(int)_\
  Distance (in metres) from the next bus to the stop.
+
+
+### Multiple stops
+
+If you want to follow multiple stops, you can create multiple sensors by adding the following lines to your `configuration.yaml`:
+
+   ```yaml
+   # Example configuration.yaml entry
+   sensor:
+     - platform: emt_madrid
+       email: !secret EMT_EMAIL
+       password: !secret EMT_PASSWORD
+       stop: 72
+       lines: 
+         - "27"
+         - "N26"
+       icon: "mdi:fountain"
+
+     - platform: emt_madrid
+       email: !secret EMT_EMAIL
+       password: !secret EMT_PASSWORD
+       stop: 4490
+       icon: "mdi:bus-clock"
+   ```
 
 
 ### Second bus sensor
