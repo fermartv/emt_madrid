@@ -4,5 +4,6 @@
   "documentation": "https://github.com/fermartv/EMT-Madrid/",
   "issue_tracker": "https://github.com/fermartv/EMT-Madrid/issues",
   "codeowners": ["@FerMartV"],
-  "version": "1.0.1"
+  "version": "2.1.0",
+  "requirements": ["emt-madrid>=1.1.1"]
 }

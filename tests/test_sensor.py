@@ -1,405 +1,555 @@
-"""The tests for the EMT Madrid sensor platform."""
+"""Tests for the EMT Madrid sensor platform."""
 
+from unittest import mock
+from unittest.mock import MagicMock, patch, AsyncMock
 
-from unittest.mock import patch
-
-import pytest
-
+from homeassistant.const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
-VALID_LOGIN = {
-    "code": "01",
-    "description": "Token 3bd5855a-ed3d-41d5-8b4b-182726f86031 extend into control-cache Data recovered OK, (lapsed: 468 millsecs)",
-    "datetime": "2023-06-29T19:50:08.307475",
-    "data": [
-        {
-            "nameApp": "OPENAPI MobilityLabs",
-            "levelApp": 0,
-            "updatedAt": "2022-11-26T21:05:55.5600000",
-            "userName": "yourusername",
-            "lastUpdate": {"$date": 1688057414194},
-            "idUser": "2f104b08-f8bf-4199-a4bc-c6ecc42ad6ba",
-            "priv": "U",
-            "tokenSecExpiration": 86399,
-            "email": "yourmail@mail.com",
-            "tokenDteExpiration": {"$date": 1688151013194},
-            "flagAdvise": True,
-            "accessToken": "3bd5855a-ed3d-41d5-8b4b-182726f86031",
-            "apiCounter": {
-                "current": 96,
-                "dailyUse": 20000,
-                "owner": 0,
-                "licenceUse": "Please mention EMT Madrid MobilityLabs as data source. Thank you and enjoy!",
-                "aboutUses": "If you need to extend the daily use of this API, please, register your App in Mobilitylabs and use your own X-ClientId and passKey instead of generic login (more info in https://mobilitylabs.emtmadrid.es/doc/new-app and https://apidocs.emtmadrid.es/#api-Block_1_User_identity-login)",
-            },
-            "username": "yourusername",
-        }
-    ],
-}
-
-INVALID_USER_LOGIN = {
-    "code": "92",
-    "description": "Error: User not found (lapsed: 776 millsecs)",
-    "datetime": "2023-06-29T20:01:09.441986",
-    "data": [],
-}
-
-INVALID_PASSWORD_LOGIN = {
-    "code": "89",
-    "description": "Error: Invalid user or Password (lapsed: 415 millsecs)",
-    "datetime": "2023-06-29T20:02:41.901955",
-    "data": [],
-}
-
-VALID_STOP_AND_LINE_ARRIVALS = {
-    "code": "00",
-    "description": "Data recovered OK (lapsed: 1155 millsecs)",
-    "datetime": "2023-06-29T18:50:13.968932",
-    "data": [
-        {
-            "Arrive": [
-                {
-                    "line": "27",
-                    "stop": "72",
-                    "isHead": "False",
-                    "destination": "PLAZA CASTILLA",
-                    "deviation": 0,
-                    "bus": 528,
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [-3.69295437941713, 40.41338567959594],
-                    },
-                    "estimateArrive": 233,
-                    "DistanceBus": 674,
-                    "positionTypeBus": "0",
-                },
-                {
-                    "line": "5",
-                    "stop": "72",
-                    "isHead": "False",
-                    "destination": "CHAMARTIN",
-                    "deviation": 0,
-                    "bus": 51,
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [-3.6950488592789854, 40.40415447211867],
-                    },
-                    "estimateArrive": 345,
-                    "DistanceBus": 1777,
-                    "positionTypeBus": "0",
-                },
-                {
-                    "line": "27",
-                    "stop": "72",
-                    "isHead": "False",
-                    "destination": "PLAZA CASTILLA",
-                    "deviation": 0,
-                    "bus": 515,
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [-3.6950488592789865, 40.40415447211869],
-                    },
-                    "estimateArrive": 1556,
-                    "DistanceBus": 1777,
-                    "positionTypeBus": "0",
-                },
-            ],
-            "StopInfo": [],
-            "ExtraInfo": [],
-            "Incident": {},
-        }
-    ],
-}
-
-INVALID_STOP_ARRIVALS = {
-    "code": "80",
-    "description": [
-        {"ES": "Parada no disponible actualmente o inexistente"},
-        {"EN": "Bus Stop disabled or not exists"},
-    ],
-    "datetime": "2023-06-29T21:34:48.886037",
-    "data": [{"Arrive": [], "StopInfo": [], "ExtraInfo": [], "Incident": {}}],
-}
-
-VALID_STOP_INFO = {
-    "code": "00",
-    "description": "Data recovered  OK, (lapsed: 463 millsecs)",
-    "datetime": "2023-07-02T15:41:44.008245",
-    "data": [
-        {
-            "stops": [
-                {
-                    "stop": "72",
-                    "name": "Cibeles-Casa de América",
-                    "postalAddress": "Pº de Recoletos, 2 (Pza. de Cibeles)",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [-3.69214452424823, 40.4203613685499],
-                    },
-                    "pmv": "60996",
-                    "dataLine": [
-                        {
-                            "line": "005",
-                            "label": "5",
-                            "direction": "B",
-                            "maxFreq": "33",
-                            "minFreq": "16",
-                            "headerA": "SOL/SEVILLA",
-                            "headerB": "CHAMARTIN",
-                            "startTime": "07:00",
-                            "stopTime": "22:58",
-                            "dayType": "FE",
-                        },
-                        {
-                            "line": "027",
-                            "label": "27",
-                            "direction": "B",
-                            "maxFreq": "25",
-                            "minFreq": "11",
-                            "headerA": "EMBAJADORES",
-                            "headerB": "PLAZA CASTILLA",
-                            "startTime": "07:00",
-                            "stopTime": "00:01",
-                            "dayType": "FE",
-                        },
-                        {
-                            "line": "526",
-                            "label": "N26",
-                            "direction": "A",
-                            "maxFreq": "60",
-                            "minFreq": "20",
-                            "headerA": "ALONSO MARTINEZ",
-                            "headerB": "ALUCHE",
-                            "startTime": "00:00",
-                            "stopTime": "05:10",
-                            "dayType": "FE",
-                        },
-                    ],
-                }
-            ]
-        }
-    ],
-}
-
-INVALID_STOP_INFO = {
-    "code": "90",
-    "description": "Error managing internal services",
-    "datetime": "2023-07-02T15:42:55.210432",
-    "data": [],
-}
-
-
-def make_request_mock(url, headers=None, data=None, method="POST"):
-    """Mock the API request."""
-    if url == "https://openapi.emtmadrid.es/v1/mobilitylabs/user/login/":
-        if headers["email"] == "invalid@email.com":
-            return INVALID_USER_LOGIN
-        if headers["password"] == "invalid_password":
-            return INVALID_PASSWORD_LOGIN
-        return VALID_LOGIN
-    if (
-        "stopId" in data
-        and url
-        == f"https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{data['stopId']}/arrives/"
-    ):
-        if data["stopId"] == 123456:
-            return INVALID_STOP_ARRIVALS
-        return VALID_STOP_AND_LINE_ARRIVALS
-    if (
-        "idStop" in data
-        and url
-        == f"https://openapi.emtmadrid.es/v1/transport/busemtmad/stops/{data['idStop']}/detail/"
-    ):
-        if data["idStop"] == 123456:
-            return INVALID_STOP_INFO
-        return VALID_STOP_INFO
-    raise ValueError(f"Invalid URL ({url}) or data ({data})")
-
-
-@patch(
-    "homeassistant.components.emt_madrid.sensor.APIEMT._make_request",
-    side_effect=make_request_mock,
+from homeassistant.components.emt_madrid.sensor import (
+    ATTR_ATTRIBUTION,
+    ATTR_BUS_DISTANCE,
+    ATTR_BUS_ESTIMATE_SECONDS,
+    ATTR_BUS_ID,
+    ATTR_BUS_LATITUDE,
+    ATTR_BUS_LONGITUDE,
+    ATTR_LINE,
+    ATTR_LINE_DESTINATION,
+    ATTR_LINE_DISTANCE,
+    ATTR_LINE_END_TIME,
+    ATTR_LINE_MAX_FREQ,
+    ATTR_LINE_MIN_FREQ,
+    ATTR_LINE_ORIGIN,
+    ATTR_LINE_START_TIME,
+    ATTR_NEXT_UP,
+    ATTR_STOP_ADDRESS,
+    ATTR_STOP_ID,
+    ATTR_STOP_NAME,
+    CONF_BUS_LINES,
+    CONF_STOP_ID,
+    BusLineSensor,
+    DEFAULT_ICON,
+    PLATFORM_SCHEMA as EMT_PLATFORM_SCHEMA,
 )
-async def test_valid_config(setup_component, hass: HomeAssistant) -> None:
-    """Test the configuration of the emt_madrid component with valid settings."""
 
+VALID_CONFIG = {
+    "sensor": {
+        "platform": "emt_madrid",
+        CONF_EMAIL: "test@example.com",
+        CONF_PASSWORD: "test_password",
+        CONF_STOP_ID: 1234,
+    }
+}
+
+VALID_CONFIG_WITH_LINES = {
+    "sensor": {
+        "platform": "emt_madrid",
+        CONF_EMAIL: "test@example.com",
+        CONF_PASSWORD: "test_password",
+        CONF_STOP_ID: 1234,
+        CONF_BUS_LINES: ["1", "7"],
+    }
+}
+
+
+async def test_platform_schema() -> None:
+    """Test the platform schema."""
+    assert CONF_EMAIL in EMT_PLATFORM_SCHEMA.schema
+    assert CONF_PASSWORD in EMT_PLATFORM_SCHEMA.schema
+    assert CONF_STOP_ID in EMT_PLATFORM_SCHEMA.schema
+    assert CONF_BUS_LINES in EMT_PLATFORM_SCHEMA.schema
+
+
+async def test_sensor_defaults() -> None:
+    """Test sensor default values."""
+    assert DEFAULT_ICON == "mdi:bus"
+
+
+async def test_bus_line_sensor_unique_id() -> None:
+    """Test BusLineSensor unique_id property."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_stop.stop_id = 1234
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    assert sensor.unique_id == "1234_1"
+
+
+async def test_bus_line_sensor_name() -> None:
+    """Test BusLineSensor name property."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Bus 1 - Test Stop",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    assert sensor.name == "Bus 1 - Test Stop"
+
+
+async def test_bus_line_sensor_icon() -> None:
+    """Test BusLineSensor icon property."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon="mdi:bus",
+        stop_id=1234,
+    )
+
+    assert sensor.icon == "mdi:bus"
+
+
+async def test_bus_line_sensor_state_with_arrival(hass: HomeAssistant) -> None:
+    """Test BusLineSensor state with arrival time."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+    mock_line.arrival = 10
+    mock_line.line_number = "1"
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    assert sensor.state == 10
+
+
+async def test_bus_line_sensor_state_with_high_arrival(hass: HomeAssistant) -> None:
+    """Test BusLineSensor state caps at 45 minutes."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+    mock_line.arrival = 60
+    mock_line.line_number = "1"
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    assert sensor.state == 45
+
+
+async def test_bus_line_sensor_state_without_arrival(hass: HomeAssistant) -> None:
+    """Test BusLineSensor state without arrival time."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+    mock_line.arrival = None
+    mock_line.line_number = "1"
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    assert sensor.state is None
+
+
+async def test_bus_line_sensor_unit_of_measurement(hass: HomeAssistant) -> None:
+    """Test BusLineSensor unit_of_measurement."""
+    mock_emt_client = MagicMock()
+    mock_stop = MagicMock()
+    mock_line = MagicMock()
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    from homeassistant.const import UnitOfTime
+    assert sensor.unit_of_measurement == UnitOfTime.MINUTES
+
+
+async def test_bus_line_sensor_extra_state_attributes(hass: HomeAssistant) -> None:
+    """Test BusLineSensor extra_state_attributes."""
+    mock_emt_client = MagicMock()
+
+    mock_stop = MagicMock()
+    mock_stop.stop_id = 1234
+    mock_stop.stop_name = "Calle de Alzheimer"
+    mock_stop.stop_address = "Calle de Alzheimer, 63"
+
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+    mock_line.arrival = 10
+    mock_line.next_arrival = 8
+    mock_line.destination = "Cuatro Caminos"
+    mock_line.origin = "Pza. de Cibeles"
+    mock_line.start_time = "06:00"
+    mock_line.end_time = "23:30"
+    mock_line.max_frequency = 15
+    mock_line.min_frequency = 5
+    mock_line.distance = 1200
+
+    mock_bus_arrival = MagicMock()
+    mock_bus_arrival.line = "1"
+    mock_bus_arrival.coordinates = [-3.7038, 40.4168]
+    mock_bus_arrival.bus_id = "BUS001"
+    mock_bus_arrival.distance_bus = 500
+    mock_bus_arrival.estimate_arrive_sec = 480
+    mock_stop.bus_arrivals = [mock_bus_arrival]
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    attrs = sensor.extra_state_attributes
+
+    assert attrs[ATTR_NEXT_UP] == 8
+    assert attrs[ATTR_LINE] == "1"
+    assert attrs[ATTR_LINE_DISTANCE] == 1200
+    assert attrs[ATTR_LINE_DESTINATION] == "Cuatro Caminos"
+    assert attrs[ATTR_LINE_ORIGIN] == "Pza. de Cibeles"
+    assert attrs[ATTR_LINE_START_TIME] == "06:00"
+    assert attrs[ATTR_LINE_END_TIME] == "23:30"
+    assert attrs[ATTR_LINE_MAX_FREQ] == 15
+    assert attrs[ATTR_LINE_MIN_FREQ] == 5
+    assert attrs[ATTR_STOP_ID] == 1234
+    assert attrs[ATTR_STOP_NAME] == "Calle de Alzheimer"
+    assert attrs[ATTR_STOP_ADDRESS] == "Calle de Alzheimer, 63"
+    assert attrs[ATTR_BUS_LATITUDE] == 40.4168
+    assert attrs[ATTR_BUS_LONGITUDE] == -3.7038
+    assert attrs[ATTR_BUS_ID] == "BUS001"
+    assert attrs[ATTR_BUS_DISTANCE] == 500
+    assert attrs[ATTR_BUS_ESTIMATE_SECONDS] == 480
+    assert attrs[ATTR_ATTRIBUTION] == "Data provided by EMT Madrid MobilityLabs"
+
+
+async def test_setup_platform_all_lines(hass: HomeAssistant) -> None:
+    """Test setting up the platform with all lines from stop."""
+    with patch("homeassistant.components.emt_madrid.sensor.EMTClient") as mock_client_class:
+        mock_emt_client = AsyncMock()
+        mock_client_class.return_value = mock_emt_client
+
+        mock_stop = MagicMock()
+        mock_stop.stop_id = 1234
+        mock_stop.stop_name = "Calle de Alzheimer"
+        mock_stop.stop_address = "Calle de Alzheimer, 63"
+
+        mock_line1 = MagicMock()
+        mock_line1.line_number = "1"
+        mock_line1.arrival = 10
+        mock_line1.next_arrival = 8
+        mock_line1.destination = "Cuatro Caminos"
+        mock_line1.origin = "Pza. de Cibeles"
+        mock_line1.start_time = "06:00"
+        mock_line1.end_time = "23:30"
+        mock_line1.max_frequency = 15
+        mock_line1.min_frequency = 5
+
+        mock_line7 = MagicMock()
+        mock_line7.line_number = "7"
+        mock_line7.arrival = 5
+        mock_line7.next_arrival = 3
+        mock_line7.destination = "Pitis"
+        mock_line7.origin = "Oporto"
+        mock_line7.start_time = "06:00"
+        mock_line7.end_time = "23:30"
+        mock_line7.max_frequency = 20
+        mock_line7.min_frequency = 10
+
+        mock_stop.stop_lines = [mock_line1, mock_line7]
+        mock_stop.bus_arrivals = []
+
+        mock_emt_client.get_stop_info.return_value = mock_stop
+        mock_emt_client.get_arrivals.return_value = mock_stop
+
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = AsyncMock()
+            mock_session_class.return_value = mock_session
+
+            assert await async_setup_component(hass, "sensor", VALID_CONFIG)
+            await hass.async_block_till_done()
+
+    # Check that sensors were created
+    bus_1_state = hass.states.get("sensor.bus_1_calle_de_alzheimer")
+    assert bus_1_state is not None
+    assert bus_1_state.state == "10"
+
+    bus_7_state = hass.states.get("sensor.bus_7_calle_de_alzheimer")
+    assert bus_7_state is not None
+    assert bus_7_state.state == "5"
+
+
+async def test_setup_platform_specific_lines(hass: HomeAssistant) -> None:
+    """Test setting up the platform with specific lines."""
+    with patch("homeassistant.components.emt_madrid.sensor.EMTClient") as mock_client_class:
+        mock_emt_client = AsyncMock()
+        mock_client_class.return_value = mock_emt_client
+
+        mock_stop = MagicMock()
+        mock_stop.stop_id = 1234
+        mock_stop.stop_name = "Calle de Alzheimer"
+        mock_stop.stop_address = "Calle de Alzheimer, 63"
+
+        mock_line1 = MagicMock()
+        mock_line1.line_number = "1"
+        mock_line1.arrival = 10
+        mock_line1.next_arrival = 8
+
+        mock_line7 = MagicMock()
+        mock_line7.line_number = "7"
+        mock_line7.arrival = 5
+        mock_line7.next_arrival = 3
+
+        mock_stop.stop_lines = [mock_line1, mock_line7]
+        mock_stop.bus_arrivals = []
+
+        mock_emt_client.get_stop_info.return_value = mock_stop
+        mock_emt_client.get_arrivals.return_value = mock_stop
+
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = AsyncMock()
+            mock_session_class.return_value = mock_session
+
+            assert await async_setup_component(
+                hass, "sensor", VALID_CONFIG_WITH_LINES
+            )
+            await hass.async_block_till_done()
+
+    # Check that only specified sensors were created
+    bus_1_state = hass.states.get("sensor.bus_1_calle_de_alzheimer")
+    assert bus_1_state is not None
+
+    bus_7_state = hass.states.get("sensor.bus_7_calle_de_alzheimer")
+    assert bus_7_state is not None
+
+
+async def test_bus_line_sensor_async_update(hass: HomeAssistant) -> None:
+    """Test BusLineSensor async_update method."""
+    mock_emt_client = AsyncMock()
+
+    mock_stop = MagicMock()
+    mock_stop.stop_id = 1234
+    mock_stop.stop_name = "Calle de Alzheimer"
+    mock_stop.stop_address = "Calle de Alzheimer, 63"
+
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+    mock_line.arrival = 5
+    mock_line.next_arrival = 3
+    mock_line.destination = "Cuatro Caminos"
+    mock_line.origin = "Pza. de Cibeles"
+    mock_line.start_time = "06:00"
+    mock_line.end_time = "23:30"
+    mock_line.max_frequency = 15
+    mock_line.min_frequency = 5
+    mock_line.distance = 1200
+
+    mock_stop.stop_lines = [mock_line]
+    mock_stop.bus_arrivals = []
+
+    # Initial stop and line
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    # Create updated stop with new data
+    mock_updated_stop = MagicMock()
+    mock_updated_stop.stop_id = 1234
+    mock_updated_stop.stop_name = "Calle de Alzheimer"
+    mock_updated_stop.stop_address = "Calle de Alzheimer, 63"
+
+    mock_updated_line = MagicMock()
+    mock_updated_line.line_number = "1"
+    mock_updated_line.arrival = 3
+    mock_updated_line.next_arrival = 2
+    mock_updated_line.destination = "Cuatro Caminos"
+    mock_updated_line.origin = "Pza. de Cibeles"
+    mock_updated_line.start_time = "06:00"
+    mock_updated_line.end_time = "23:30"
+    mock_updated_line.max_frequency = 15
+    mock_updated_line.min_frequency = 5
+    mock_updated_line.distance = 1200
+
+    mock_updated_stop.stop_lines = [mock_updated_line]
+    mock_updated_stop.bus_arrivals = []
+
+    mock_emt_client.get_arrivals.return_value = mock_updated_stop
+
+    # Call async_update
+    await sensor.async_update()
+
+    # Verify the sensor state was updated
+    assert sensor.state == 3
+    assert sensor._line.arrival == 3
+    assert sensor._line.next_arrival == 2
+
+
+async def test_extra_state_attributes_no_bus_arrivals(hass: HomeAssistant) -> None:
+    """Test extra_state_attributes when stop has no bus arrivals."""
+    mock_emt_client = MagicMock()
+
+    mock_stop = MagicMock()
+    mock_stop.stop_id = 1234
+    mock_stop.stop_name = "Calle de Alzheimer"
+    mock_stop.stop_address = "Calle de Alzheimer, 63"
+    mock_stop.bus_arrivals = []
+
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+    mock_line.arrival = 10
+    mock_line.next_arrival = 8
+    mock_line.destination = "Cuatro Caminos"
+    mock_line.origin = "Pza. de Cibeles"
+    mock_line.start_time = "06:00"
+    mock_line.end_time = "23:30"
+    mock_line.max_frequency = 15
+    mock_line.min_frequency = 5
+    mock_line.distance = 1200
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    attrs = sensor.extra_state_attributes
+
+    assert attrs[ATTR_NEXT_UP] == 8
+    assert attrs[ATTR_LINE_DISTANCE] == 1200
+    assert attrs[ATTR_BUS_LATITUDE] is None
+    assert attrs[ATTR_BUS_LONGITUDE] is None
+    assert attrs[ATTR_BUS_ID] is None
+    assert attrs[ATTR_BUS_DISTANCE] is None
+    assert attrs[ATTR_BUS_ESTIMATE_SECONDS] is None
+
+
+async def test_extra_state_attributes_next_arrival_none(hass: HomeAssistant) -> None:
+    """Test extra_state_attributes when line.next_arrival is None."""
+    mock_emt_client = MagicMock()
+
+    mock_stop = MagicMock()
+    mock_stop.stop_id = 1234
+    mock_stop.stop_name = "Calle de Alzheimer"
+    mock_stop.stop_address = "Calle de Alzheimer, 63"
+    mock_stop.bus_arrivals = []
+
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+    mock_line.arrival = 10
+    mock_line.next_arrival = None
+    mock_line.destination = "Cuatro Caminos"
+    mock_line.origin = "Pza. de Cibeles"
+    mock_line.start_time = "06:00"
+    mock_line.end_time = "23:30"
+    mock_line.max_frequency = 15
+    mock_line.min_frequency = 5
+    mock_line.distance = 1200
+
+    sensor = BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+    attrs = sensor.extra_state_attributes
+
+    assert attrs[ATTR_NEXT_UP] is None
+
+
+async def test_setup_platform_invalid_line(hass: HomeAssistant) -> None:
+    """Test setting up the platform with an invalid line."""
     config = {
         "sensor": {
             "platform": "emt_madrid",
-            "email": "test@mail.com",
-            "password": "password123",
-            "stop": 72,
-            "lines": ["27"],
-            "icon": "mdi:fountain",
+            CONF_EMAIL: "test@example.com",
+            CONF_PASSWORD: "test_password",
+            CONF_STOP_ID: 1234,
+            CONF_BUS_LINES: ["1", "99"],  # 99 doesn't exist
         }
     }
-    assert await async_setup_component(hass, "sensor", config)
-    await hass.async_block_till_done()
-    state = hass.states.get("sensor.bus_27_cibeles_casa_de_america")
 
-    assert state.state == "3"
-    assert state.attributes["next_bus"] == 25
-    assert state.attributes["stop_id"] == 72
-    assert state.attributes["line"] == "27"
-    assert state.attributes["attribution"] == "Data provided by EMT Madrid MobilityLabs"
-    assert state.attributes["unit_of_measurement"] == "min"
-    assert state.attributes["icon"] == "mdi:fountain"
-    assert state.attributes["distance"] == 674
-    assert state.attributes["destination"] == "PLAZA CASTILLA"
-    assert state.attributes["origin"] == "EMBAJADORES"
-    assert state.attributes["start_time"] == "07:00"
-    assert state.attributes["end_time"] == "00:01"
-    assert state.attributes["max_frequency"] == 25
-    assert state.attributes["min_frequency"] == 11
-    assert state.attributes["stop_name"] == "Cibeles-Casa de América"
-    assert state.attributes["stop_address"] == "Pº de Recoletos, 2 (Pza. de Cibeles)"
+    with patch("homeassistant.components.emt_madrid.sensor.EMTClient") as mock_client_class:
+        mock_emt_client = AsyncMock()
+        mock_client_class.return_value = mock_emt_client
 
+        mock_stop = MagicMock()
+        mock_stop.stop_id = 1234
+        mock_stop.stop_name = "Calle de Alzheimer"
 
-@patch(
-    "homeassistant.components.emt_madrid.sensor.APIEMT._make_request",
-    side_effect=make_request_mock,
-)
-async def test_valid_config_no_lines_specified(
-    setup_component, hass: HomeAssistant
-) -> None:
-    """Test the basic configuration of the emt_madrid component with valid settings."""
+        mock_line1 = MagicMock()
+        mock_line1.line_number = "1"
+        mock_line1.arrival = 10
+        mock_line1.next_arrival = 8
 
-    config = {
-        "sensor": {
-            "platform": "emt_madrid",
-            "email": "test@mail.com",
-            "password": "password123",
-            "stop": 72,
-        }
-    }
-    assert await async_setup_component(hass, "sensor", config)
-    await hass.async_block_till_done()
-    state = hass.states.get("sensor.bus_27_cibeles_casa_de_america")
+        mock_stop.stop_lines = [mock_line1]
+        mock_stop.bus_arrivals = []
 
-    assert state.state == "3"
-    assert state.attributes["next_bus"] == 25
-    assert state.attributes["stop_id"] == 72
-    assert state.attributes["line"] == "27"
-    assert state.attributes["attribution"] == "Data provided by EMT Madrid MobilityLabs"
-    assert state.attributes["unit_of_measurement"] == "min"
-    assert state.attributes["icon"] == "mdi:bus"
-    assert state.attributes["distance"] == 674
-    assert state.attributes["destination"] == "PLAZA CASTILLA"
-    assert state.attributes["origin"] == "EMBAJADORES"
-    assert state.attributes["start_time"] == "07:00"
-    assert state.attributes["end_time"] == "00:01"
-    assert state.attributes["max_frequency"] == 25
-    assert state.attributes["min_frequency"] == 11
-    assert state.attributes["stop_name"] == "Cibeles-Casa de América"
-    assert state.attributes["stop_address"] == "Pº de Recoletos, 2 (Pza. de Cibeles)"
+        mock_emt_client.get_stop_info.return_value = mock_stop
+        mock_emt_client.get_arrivals.return_value = mock_stop
 
-    state = hass.states.get("sensor.bus_5_cibeles_casa_de_america")
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = AsyncMock()
+            mock_session_class.return_value = mock_session
 
-    assert state.state == "5"
-    assert state.attributes["next_bus"] is None
-    assert state.attributes["stop_id"] == 72
-    assert state.attributes["line"] == "5"
-    assert state.attributes["attribution"] == "Data provided by EMT Madrid MobilityLabs"
-    assert state.attributes["unit_of_measurement"] == "min"
-    assert state.attributes["icon"] == "mdi:bus"
-    assert state.attributes["distance"] == 1777
-    assert state.attributes["destination"] == "CHAMARTIN"
-    assert state.attributes["origin"] == "SOL/SEVILLA"
-    assert state.attributes["start_time"] == "07:00"
-    assert state.attributes["end_time"] == "22:58"
-    assert state.attributes["max_frequency"] == 33
-    assert state.attributes["min_frequency"] == 16
-    assert state.attributes["stop_name"] == "Cibeles-Casa de América"
-    assert state.attributes["stop_address"] == "Pº de Recoletos, 2 (Pza. de Cibeles)"
+            assert await async_setup_component(hass, "sensor", config)
+            await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.bus_n26_cibeles_casa_de_america")
+    # Check that only valid sensor was created
+    bus_1_state = hass.states.get("sensor.bus_1_calle_de_alzheimer")
+    assert bus_1_state is not None
 
-    assert state.state == "unknown"
-    assert state.attributes["next_bus"] is None
-    assert state.attributes["stop_id"] == 72
-    assert state.attributes["line"] == "N26"
-    assert state.attributes["attribution"] == "Data provided by EMT Madrid MobilityLabs"
-    assert state.attributes["unit_of_measurement"] == "min"
-    assert state.attributes["icon"] == "mdi:bus"
-    assert state.attributes["distance"] is None
-    assert state.attributes["destination"] == "ALONSO MARTINEZ"
-    assert state.attributes["origin"] == "ALUCHE"
-    assert state.attributes["start_time"] == "00:00"
-    assert state.attributes["end_time"] == "05:10"
-    assert state.attributes["max_frequency"] == 60
-    assert state.attributes["min_frequency"] == 20
-    assert state.attributes["stop_name"] == "Cibeles-Casa de América"
-    assert state.attributes["stop_address"] == "Pº de Recoletos, 2 (Pza. de Cibeles)"
-
-
-@patch(
-    "homeassistant.components.emt_madrid.sensor.APIEMT._make_request",
-    side_effect=make_request_mock,
-)
-async def test_invalid_user(
-    setup_component, hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test the configuration of the emt_madrid component with an invalid user."""
-
-    config = {
-        "sensor": {
-            "platform": "emt_madrid",
-            "email": "invalid@email.com",
-            "password": "password123",
-            "stop": 72,
-            "lines": ["27"],
-            "icon": "mdi:fountain",
-        }
-    }
-    assert await async_setup_component(hass, "sensor", config)
-    await hass.async_block_till_done()
-    assert "Invalid email or password" in caplog.text
-
-
-@patch(
-    "homeassistant.components.emt_madrid.sensor.APIEMT._make_request",
-    side_effect=make_request_mock,
-)
-async def test_invalid_password(
-    setup_component, hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test the configuration of the emt_madrid component with an invalid password."""
-
-    config = {
-        "sensor": {
-            "platform": "emt_madrid",
-            "email": "test@email.com",
-            "password": "invalid_password",
-            "stop": 72,
-            "lines": ["27"],
-            "icon": "mdi:fountain",
-        }
-    }
-    assert await async_setup_component(hass, "sensor", config)
-    await hass.async_block_till_done()
-    assert "Invalid email or password" in caplog.text
-
-
-@patch(
-    "homeassistant.components.emt_madrid.sensor.APIEMT._make_request",
-    side_effect=make_request_mock,
-)
-async def test_invalid_stop(
-    setup_component, hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test the configuration of the emt_madrid component with an invalid bus stop."""
-
-    config = {
-        "sensor": {
-            "platform": "emt_madrid",
-            "email": "test@email.com",
-            "password": "password123",
-            "stop": 123456,
-            "lines": ["27"],
-            "icon": "mdi:fountain",
-        }
-    }
-    assert await async_setup_component(hass, "sensor", config)
-    await hass.async_block_till_done()
-    assert "Bus stop disabled or does not exist" in caplog.text
+    # Invalid line should not create a sensor
+    bus_99_state = hass.states.get("sensor.bus_99_calle_de_alzheimer")
+    assert bus_99_state is None

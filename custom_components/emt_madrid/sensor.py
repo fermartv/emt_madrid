@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
@@ -19,7 +20,9 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from .emt_madrid import APIEMT
+
+from emt_madrid import EMTClient, Stop, Line
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +44,11 @@ ATTR_LINE_END_TIME = "end_time"
 ATTR_LINE_MAX_FREQ = "max_frequency"
 ATTR_LINE_MIN_FREQ = "min_frequency"
 ATTR_LINE_DISTANCE = "distance"
+ATTR_BUS_LATITUDE = "bus_latitude"
+ATTR_BUS_LONGITUDE = "bus_longitude"
+ATTR_BUS_ID = "bus_id"
+ATTR_BUS_DISTANCE = "bus_distance"
+ATTR_BUS_ESTIMATE_SECONDS = "bus_estimate_seconds"
 ATTRIBUTION = "Data provided by EMT Madrid MobilityLabs"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -55,16 +63,30 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 
 
 class BusLineSensor(Entity):
-    """Implementation of an EMT-Madrid bus line sensor."""
+    """Implementation of an EMT-Madrid bus line sensor using the emt-madrid library."""
 
-    def __init__(self, api_emt: APIEMT, stop_id, line, name, icon) -> None:
+    def __init__(
+        self,
+        emt_client: EMTClient,
+        stop: Stop,
+        line: Line,
+        name: str,
+        icon: str,
+        stop_id: int,
+    ) -> None:
         """Initialize the sensor."""
-        self._state = None
-        self._api_emt = api_emt
-        self._stop_id = stop_id
-        self._bus_line = line
-        self._icon = icon
+        self._emt_client = emt_client
+        self._stop = stop
+        self._line = line
         self._name = name
+        self._icon = icon
+        self._stop_id = stop_id
+        self._state = None
+
+    @property
+    def unique_id(self) -> str:
+        """Return a unique ID for the sensor."""
+        return f"{self._stop_id}_{self._line.line_number}"
 
     @property
     def name(self) -> str:
@@ -72,10 +94,11 @@ class BusLineSensor(Entity):
         return self._name
 
     @property
-    def state(self) -> int:
+    def state(self) -> int | None:
         """Return the state of the sensor."""
-        arrival_time = self._api_emt.get_arrival_time(self._bus_line)
-        return arrival_time[0]
+        if self._line.arrival is not None:
+            return min(self._line.arrival, 45)
+        return None
 
     @property
     def unit_of_measurement(self) -> str:
@@ -90,73 +113,127 @@ class BusLineSensor(Entity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the device state attributes."""
-        arrival_time = self._api_emt.get_arrival_time(self._bus_line)
-        stop_info = self._api_emt.get_stop_info()
-        line_info = self._api_emt.get_line_info(self._bus_line)
+        # Find bus arrival for this specific line
+        bus_arrival = None
+        if self._stop.bus_arrivals:
+            for arrival in self._stop.bus_arrivals:
+                if arrival.line == self._line.line_number:
+                    bus_arrival = arrival
+                    break
+
+        # Extract bus coordinates if available
+        bus_latitude = None
+        bus_longitude = None
+        bus_id = None
+        bus_distance = None
+        bus_estimate_seconds = None
+
+        if bus_arrival and bus_arrival.coordinates and len(bus_arrival.coordinates) >= 2:
+            bus_latitude = bus_arrival.coordinates[1]  # latitude is second element
+            bus_longitude = bus_arrival.coordinates[0]  # longitude is first element
+            bus_id = bus_arrival.bus_id
+            bus_distance = bus_arrival.distance_bus
+            bus_estimate_seconds = bus_arrival.estimate_arrive_sec
 
         return {
-            ATTR_NEXT_UP: arrival_time[1],
-            ATTR_LINE: self._bus_line,
-            ATTR_LINE_DISTANCE: line_info.get("distance")[0],
-            ATTR_LINE_DESTINATION: line_info.get("destination"),
-            ATTR_LINE_ORIGIN: line_info.get("origin"),
-            ATTR_LINE_START_TIME: line_info.get("start_time"),
-            ATTR_LINE_END_TIME: line_info.get("end_time"),
-            ATTR_LINE_MAX_FREQ: line_info.get("max_freq"),
-            ATTR_LINE_MIN_FREQ: line_info.get("min_freq"),
+            ATTR_NEXT_UP: min(self._line.next_arrival, 45) if self._line.next_arrival is not None else None,
+            ATTR_LINE: self._line.line_number,
+            ATTR_LINE_DISTANCE: self._line.distance if hasattr(self._line, 'distance') else None,
+            ATTR_LINE_DESTINATION: self._line.destination,
+            ATTR_LINE_ORIGIN: self._line.origin,
+            ATTR_LINE_START_TIME: str(self._line.start_time) if self._line.start_time else None,
+            ATTR_LINE_END_TIME: str(self._line.end_time) if self._line.end_time else None,
+            ATTR_LINE_MAX_FREQ: self._line.max_frequency,
+            ATTR_LINE_MIN_FREQ: self._line.min_frequency,
             ATTR_STOP_ID: self._stop_id,
-            ATTR_STOP_NAME: stop_info.get("bus_stop_name"),
-            ATTR_STOP_ADDRESS: stop_info.get("bus_stop_address"),
+            ATTR_STOP_NAME: self._stop.stop_name,
+            ATTR_STOP_ADDRESS: self._stop.stop_address,
+            ATTR_BUS_LATITUDE: bus_latitude,
+            ATTR_BUS_LONGITUDE: bus_longitude,
+            ATTR_BUS_ID: bus_id,
+            ATTR_BUS_DISTANCE: bus_distance,
+            ATTR_BUS_ESTIMATE_SECONDS: bus_estimate_seconds,
             ATTR_ATTRIBUTION: ATTRIBUTION,
         }
 
-    def update(self) -> None:
+    async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
-        self._api_emt.update_arrival_times(self._stop_id)
+        # Get updated stop with bus arrivals
+        self._stop = await self._emt_client.get_arrivals()
+        # Refresh reference to line from the updated stop
+        for line in self._stop.stop_lines:
+            if line.line_number == self._line.line_number:
+                self._line = line
+                break
 
 
-def get_api_emt_instance(config: ConfigType) -> APIEMT:
-    """Create an instance of the APIEMT class with the provided configuration."""
-    email = config.get(CONF_EMAIL)
-    password = config.get(CONF_PASSWORD)
-    stop_id = config.get(CONF_STOP_ID)
-    api_emt = APIEMT(email, password, stop_id)
-    api_emt.authenticate()
-    api_emt.update_stop_info(stop_id)
-    return api_emt
-
-
-def create_bus_line_sensor(
-    api_emt: APIEMT, stop_id, line, name, icon, config: ConfigType
-) -> BusLineSensor:
-    """Create a BusLineSensor instance with the provided APIEMT instance and configuration."""
-    api_emt.update_arrival_times(stop_id)
-    return BusLineSensor(api_emt, stop_id, line, name, icon)
-
-
-def setup_platform(
+async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Set up the sensor platform."""
-    api_emt = get_api_emt_instance(config)
+
+    email = config.get(CONF_EMAIL)
+    password = config.get(CONF_PASSWORD)
     stop_id = config.get(CONF_STOP_ID)
-    stop_info = api_emt.get_stop_info()
     lines = config.get(CONF_BUS_LINES)
-    bus_line_sensors = []
-    if not lines or len(lines) == 0:
-        lines = list(stop_info["lines"].keys())
-    for line in lines:
-        if line in stop_info["lines"]:
-            name = f"Bus {line} - {stop_info['bus_stop_name']}"
-            icon = config.get(CONF_ICON)
-            bus_line_sensors.append(
-                create_bus_line_sensor(api_emt, stop_id, line, name, icon, config)
+    icon = config.get(CONF_ICON)
+
+    # Create aiohttp session
+    session = aiohttp.ClientSession()
+
+    try:
+        # Create EMT client
+        emt_client = EMTClient(
+            email=email,
+            password=password,
+            stop_id=stop_id,
+            session=session,
+            lines=lines if lines else None,
+        )
+
+        # Get stop information
+        stop: Stop = await emt_client.get_stop_info()
+
+        # If no lines specified, use all lines from the stop
+        if not lines or len(lines) == 0:
+            lines = [line.line_number for line in stop.stop_lines]
+
+        bus_line_sensors = []
+        for line_number in lines:
+            # Find the line in the stop's lines
+            line_obj = next(
+                (line for line in stop.stop_lines if line.line_number == line_number),
+                None
             )
-        else:
-            _LOGGER.error(
-                f"Sensor setup failed. Line {line} not serviced at this stop (Stop ID: {stop_id})"
+            if line_obj is None:
+                _LOGGER.error(
+                    f"Sensor setup failed. Line {line_number} not serviced at this stop (Stop ID: {stop_id})"
+                )
+                continue
+
+            name = f"Bus {line_number} - {stop.stop_name}"
+            sensor = BusLineSensor(
+                emt_client=emt_client,
+                stop=stop,
+                line=line_obj,
+                name=name,
+                icon=icon,
+                stop_id=stop_id,
             )
-    add_entities(bus_line_sensors)
+            bus_line_sensors.append(sensor)
+
+        add_entities(bus_line_sensors)
+
+    except Exception as e:
+        _LOGGER.error(f"Error setting up EMT Madrid sensor: {e}")
+        await session.close()
+        raise
+
+    async def cleanup(_):
+        """Close the aiohttp session when the platform is unloaded."""
+        await session.close()
+
+    hass.bus.async_listen_once("homeassistant_stop", cleanup)
