@@ -53,85 +53,46 @@ Add `emt_madrid` sensor to your `configuration.yaml` file:
 
 ### Configuration Variables
 
-**email**:\
- _(string) (Required)_\
- Email account used to register in the EMT Madrid API.
-
-**password**:\
- _(string) (Required)_\
- Password used to register in the EMT Madrid API.
-
-**stop**:\
- _(integer) (Required)_\
- Bus stop ID.
-
-**lines**:\
- _(list) (Optional)_\
- One or more line numbers.
-
-**icon**:\
- _(string) (Optional)_\
- Icon to use in the frontend.
-_Default value: "mdi:bus"_
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| email | string | Yes | - | Email account used to register in the EMT Madrid API. |
+| password | string | Yes | - | Password used to register in the EMT Madrid API. |
+| stop | integer | Yes | - | Bus stop ID. |
+| lines | list | No | - | One or more line numbers. |
+| icon | string | No | mdi:bus | Icon to use in the frontend. |
 
 
 ## Sensors, status and attributes
 
-Once you have the platform up and running, you will have one sensor per line specified. If no lines are provided, it will create a sensor for each line at that stop ID. The name of the sensor will be automatically generated using the following structure: Bus {line} - {stop_name}. All the sensors will update the data automatically every minute, and you should have the following data:
+Once you have the platform up and running, you will have one sensor per line specified. If no lines are provided, it will create a sensor for each line at that stop ID. The name of the sensor will be automatically generated using the following structure: Bus {line} - {stop_name}. Each sensor has a unique ID which allows you to customize sensor names in Home Assistant. All the sensors will update the data automatically every minute, and you should have the following data:
 
-**state**:\
- _(int)_\
- Arrival time in minutes for the next bus. It will show "unknown" when there are no more buses coming and 45 when the arrival time is over 45 minutes.
+#### State
 
-### Attributes
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| state | int | Arrival time in minutes for the next bus. Shows "unknown" when there are no more buses coming and 45 when the arrival time is over 45 minutes. |
 
-**next_bus**:\
- _(int)_\
- Arrival time in minutes for the second bus. It will show "unknown" when there are no more buses coming and 45 when the arrival time is over 45 minutes.
+#### Attributes
 
-**stop_id**:\
- _(int)_\
- Bus stop ID given in the configuration.
-
-**stop_name**:\
- _(string)_\
- Bus stop name from EMT.
-
-**stop_address**:\
- _(string)_\
- Bus stop address from EMT.
-
-**line**:\
- _(string)_\
- Bus line.
-
-**destination**:\
- _(string)_\
- Bus line last stop.
-
-**origin**:\
- _(string)_\
- Bus line first stop.
-
-**start_time**:\
- _(string)_\
- Time at which the first bus leaves the first stop.
-
-**end_time**:\
- _(string)_\
- Time at which the last bus leaves the first stop.
-
-**max_frequency**:\
- _(int)_\
- Maximum frequency for this line.
-
-**min_frequency**:\
- _(int)_\
- Minimum frequency for this line.
-
-**distance**:\
- _(int)_\
- Distance (in metres) from the next bus to the stop.
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| next_bus | int | Arrival time in minutes for the second bus. Shows "unknown" when there are no more buses coming and 45 when the arrival time is over 45 minutes. |
+| stop_id | int | Bus stop ID given in the configuration. |
+| stop_name | string | Bus stop name from EMT. |
+| stop_address | string | Bus stop address from EMT. |
+| line | string | Bus line. |
+| destination | string | Bus line last stop. |
+| origin | string | Bus line first stop. |
+| start_time | string | Time at which the first bus leaves the first stop. |
+| end_time | string | Time at which the last bus leaves the first stop. |
+| max_frequency | int | Maximum frequency for this line. |
+| min_frequency | int | Minimum frequency for this line. |
+| distance | int | Distance (in metres) from the next bus to the stop. |
+| bus_latitude | float | Latitude of the next bus. |
+| bus_longitude | float | Longitude of the next bus. |
+| bus_id | int | ID of the next bus. |
+| bus_distance | int | Distance (in metres) from the bus to the stop. |
+| bus_estimate_seconds | int | Estimated arrival time in seconds for the next bus. |
 
 
 ### Multiple stops
@@ -173,5 +134,8 @@ template:
 
 ## Roadmap
 
-1. Move to fully async component.
-2. Add `unique_id` to allow modifying sensor names.
+- [x] Move to fully async component.
+- [x] Add unique_id to allow modifying sensor names.
+- [ ] UI Configuration Support: Allow users to add the integration via the Home Assistant UI (no YAML required).
+- [ ] Device Tracker for Buses: Implement a device tracker to show the location of upcoming buses on a map.
+- [ ] Bicimad Integration: Add support for Bicimad (Madrid's bike-sharing system) data.
