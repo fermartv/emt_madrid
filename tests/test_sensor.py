@@ -10,6 +10,13 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+import logging
+
+import aiohttp
+import pytest
+from emt_madrid import EMTClient, Line, Stop
+from homeassistant.helpers.entity_component import async_update_entity
+
 from homeassistant.components.emt_madrid.sensor import (
     ATTR_ATTRIBUTION,
     ATTR_BUS_DISTANCE,
@@ -553,3 +560,127 @@ async def test_setup_platform_invalid_line(hass: HomeAssistant) -> None:
     # Invalid line should not create a sensor
     bus_99_state = hass.states.get("sensor.bus_99_calle_de_alzheimer")
     assert bus_99_state is None
+
+
+# Replies of the EMT arrivals endpoint, in the shapes recorded in emt-madrid's own test fixtures.
+def _arrive(line: str, seconds: int, bus: int) -> dict:
+    return {
+        "line": line, "stop": "1234", "bus": bus, "destination": "Cuatro Caminos",
+        "estimateArrive": seconds, "DistanceBus": 900, "isHead": "False", "deviation": 0,
+        "positionTypeBus": "0", "geometry": {"type": "Point", "coordinates": [-3.7, 40.4]},
+    }
+
+
+ARRIVALS_RESPONSE = {
+    "code": "00",
+    "data": [{"Arrive": [_arrive("1", 300, 11), _arrive("1", 720, 12), _arrive("7", 600, 71)],
+              "StopInfo": [], "ExtraInfo": [], "Incident": {}}],
+}
+ARRIVALS_EMPTY_RESPONSE = {
+    "code": "00",
+    "data": [{"Arrive": [], "StopInfo": [], "ExtraInfo": [], "Incident": {}}],
+}
+ARRIVALS_NO_DATA_RESPONSE = {"code": "00", "description": " Data recovered  OK  (lapsed: 1065 millsecs)"}
+API_LIMIT_EXCEEDED_RESPONSE = {"code": "98", "description": "Limit use API reached", "data": []}
+STOP_NOT_FOUND_RESPONSE = {
+    "code": "80",
+    "description": [{"EN": "Bus Stop disabled or not exists"}],
+    "data": [{"Arrive": [], "StopInfo": [], "ExtraInfo": [], "Incident": {}}],
+}
+
+
+def _real_client(replies: list) -> tuple[EMTClient, Stop]:
+    """A real emt-madrid client whose authenticated HTTP exchange returns the given replies in order."""
+    client = EMTClient(email="test@example.com", password="test_password", stop_id=1234, session=MagicMock())
+    stop = Stop(
+        stop_id=1234,
+        stop_name="Calle de Alzheimer",
+        stop_address="Calle de Alzheimer, 63",
+        stop_coordinates=[-3.7, 40.4],
+        stop_lines=[Line("1", "Pza. de Cibeles", "Cuatro Caminos"), Line("7", "Colombia", "Pza. Manuel Becerra")],
+    )
+    client._stop = stop
+    client._repository.emt_authenticated_client.exchange = AsyncMock(side_effect=replies)
+    return client, stop
+
+
+def _sensors(client: EMTClient, stop: Stop) -> list[BusLineSensor]:
+    return [
+        BusLineSensor(emt_client=client, stop=stop, line=line, name=f"Bus {line.line_number}",
+                      icon=DEFAULT_ICON, stop_id=1234)
+        for line in stop.stop_lines
+    ]
+
+
+@pytest.mark.parametrize("empty_reply", [ARRIVALS_EMPTY_RESPONSE, ARRIVALS_NO_DATA_RESPONSE])
+async def test_async_update_no_arrivals_clears_every_line(hass: HomeAssistant, caplog, empty_reply) -> None:
+    """No bus scheduled (e.g. at night): no line keeps the last bus, and the sensors stay available."""
+    client, stop = _real_client([ARRIVALS_RESPONSE, empty_reply])
+    line_1, line_7 = _sensors(client, stop)
+
+    await line_1.async_update()
+    assert (line_1.state, line_7.state) == (5, 10)
+    assert line_1.extra_state_attributes[ATTR_NEXT_UP] == 12
+    assert line_1.extra_state_attributes[ATTR_BUS_LATITUDE] == 40.4
+
+    caplog.clear()
+    await line_1.async_update()
+
+    assert (line_1.state, line_7.state) == (None, None)
+    assert line_1.available and line_7.available
+    for sensor in (line_1, line_7):
+        assert sensor.extra_state_attributes[ATTR_NEXT_UP] is None
+        assert sensor.extra_state_attributes[ATTR_BUS_LATITUDE] is None
+    assert not [r for r in caplog.records if r.levelno >= logging.INFO]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [API_LIMIT_EXCEEDED_RESPONSE, STOP_NOT_FOUND_RESPONSE, aiohttp.ClientConnectionError("connection reset"), TimeoutError()],
+    ids=["rate-limit", "stop-not-found", "network", "timeout"],
+)
+async def test_async_update_api_error_marks_unavailable(hass: HomeAssistant, caplog, failure) -> None:
+    """An API or network failure makes the sensor unavailable, logged once at INFO, and it recovers."""
+    client, stop = _real_client([ARRIVALS_RESPONSE, failure, failure, ARRIVALS_RESPONSE, failure])
+    line_1, _ = _sensors(client, stop)
+    await line_1.async_update()
+    caplog.clear()
+
+    await line_1.async_update()
+    await line_1.async_update()
+    assert line_1.available is False
+    down = [r for r in caplog.records if "unavailable for stop 1234, line 1" in r.getMessage()]
+    assert len(down) == 1 and down[0].levelno == logging.INFO
+
+    await line_1.async_update()
+    assert line_1.available is True
+    assert line_1.state == 5
+    up = [r for r in caplog.records if "available again for stop 1234, line 1" in r.getMessage()]
+    assert len(up) == 1 and up[0].levelno == logging.INFO
+
+    await line_1.async_update()
+    assert line_1.available is False
+    assert len([r for r in caplog.records if "unavailable for stop 1234, line 1" in r.getMessage()]) == 2
+
+
+async def test_states_published_by_home_assistant(hass: HomeAssistant, caplog) -> None:
+    """End to end through HA: minutes, then unknown when no bus is scheduled, then unavailable on an error."""
+    client, stop = _real_client([ARRIVALS_RESPONSE, ARRIVALS_EMPTY_RESPONSE, API_LIMIT_EXCEEDED_RESPONSE])
+    client.get_stop_info = AsyncMock(return_value=stop)
+    with patch("homeassistant.components.emt_madrid.sensor.EMTClient", return_value=client), \
+            patch("aiohttp.ClientSession", return_value=MagicMock(close=AsyncMock())):
+        assert await async_setup_component(hass, "sensor", VALID_CONFIG_WITH_LINES)
+        await hass.async_block_till_done()
+
+    entity_id = "sensor.bus_1_calle_de_alzheimer"
+    assert hass.states.get(entity_id).state == "unknown"  # no update before add
+
+    await async_update_entity(hass, entity_id)
+    assert hass.states.get(entity_id).state == "5"
+
+    await async_update_entity(hass, entity_id)
+    assert hass.states.get(entity_id).state == "unknown"
+
+    await async_update_entity(hass, entity_id)
+    assert hass.states.get(entity_id).state == "unavailable"
+    assert "Update for" not in caplog.text
