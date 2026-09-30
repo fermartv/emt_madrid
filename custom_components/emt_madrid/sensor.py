@@ -168,13 +168,15 @@ class BusLineSensor(Entity):
         try:
             self._stop = await self._emt_client.get_arrivals()
         except ArrivalsNotFoundError as err:
-            # emt-madrid wraps every failure in ArrivalsNotFoundError; only an empty arrivals list
-            # (no bus scheduled, e.g. at night) has an ArrivalsNotFoundError as its cause.
+            # emt-madrid wraps every failure in ArrivalsNotFoundError. Only a reply without arrivals
+            # (no bus scheduled, e.g. at night) has an ArrivalsNotFoundError as its cause; errors such
+            # as a rate limit, a network failure or an unknown stop have another cause.
             if isinstance(err.__cause__, ArrivalsNotFoundError):
-                # The library leaves the previous arrivals on the stop: clear them so the state
-                # becomes unknown instead of repeating the last bus.
-                self._line.arrival = None
-                self._line.next_arrival = None
+                # The library leaves the previous arrivals on the shared stop: clear them for every
+                # line, so no sensor of this stop keeps repeating the last bus.
+                for line in self._stop.stop_lines:
+                    line.arrival = None
+                    line.next_arrival = None
                 self._stop.bus_arrivals = []
                 self._set_available(True)
                 _LOGGER.debug("No arrivals at stop %s: %s", self._stop_id, err)
@@ -189,11 +191,17 @@ class BusLineSensor(Entity):
                 break
 
     def _set_available(self, available: bool, err: Exception | None = None) -> None:
-        """Track availability, logging once when the API fails and once when it recovers."""
+        """Track availability, logging once when updates start failing and once when they recover."""
         if not available and self._available:
-            _LOGGER.warning("EMT Madrid API unavailable for stop %s: %s", self._stop_id, err)
+            _LOGGER.info(
+                "EMT Madrid API unavailable for stop %s, line %s: %s",
+                self._stop_id, self._line.line_number, err,
+            )
         elif available and not self._available:
-            _LOGGER.info("EMT Madrid API available again for stop %s", self._stop_id)
+            _LOGGER.info(
+                "EMT Madrid API available again for stop %s, line %s",
+                self._stop_id, self._line.line_number,
+            )
         self._available = available
 
 
