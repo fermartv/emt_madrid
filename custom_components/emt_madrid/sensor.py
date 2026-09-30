@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 
-from emt_madrid import EMTClient, Stop, Line
+from emt_madrid import ArrivalsNotFoundError, EMTClient, Stop, Line
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,11 +82,17 @@ class BusLineSensor(Entity):
         self._icon = icon
         self._stop_id = stop_id
         self._state = None
+        self._available = True
 
     @property
     def unique_id(self) -> str:
         """Return a unique ID for the sensor."""
         return f"{self._stop_id}_{self._line.line_number}"
+
+    @property
+    def available(self) -> bool:
+        """Return False while the EMT API cannot be reached or answers with an error."""
+        return self._available
 
     @property
     def name(self) -> str:
@@ -159,12 +165,36 @@ class BusLineSensor(Entity):
     async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
         # Get updated stop with bus arrivals
-        self._stop = await self._emt_client.get_arrivals()
+        try:
+            self._stop = await self._emt_client.get_arrivals()
+        except ArrivalsNotFoundError as err:
+            # emt-madrid wraps every failure in ArrivalsNotFoundError; only an empty arrivals list
+            # (no bus scheduled, e.g. at night) has an ArrivalsNotFoundError as its cause.
+            if isinstance(err.__cause__, ArrivalsNotFoundError):
+                # The library leaves the previous arrivals on the stop: clear them so the state
+                # becomes unknown instead of repeating the last bus.
+                self._line.arrival = None
+                self._line.next_arrival = None
+                self._stop.bus_arrivals = []
+                self._set_available(True)
+                _LOGGER.debug("No arrivals at stop %s: %s", self._stop_id, err)
+            else:
+                self._set_available(False, err)
+            return
+        self._set_available(True)
         # Refresh reference to line from the updated stop
         for line in self._stop.stop_lines:
             if line.line_number == self._line.line_number:
                 self._line = line
                 break
+
+    def _set_available(self, available: bool, err: Exception | None = None) -> None:
+        """Track availability, logging once when the API fails and once when it recovers."""
+        if not available and self._available:
+            _LOGGER.warning("EMT Madrid API unavailable for stop %s: %s", self._stop_id, err)
+        elif available and not self._available:
+            _LOGGER.info("EMT Madrid API available again for stop %s", self._stop_id)
+        self._available = available
 
 
 async def async_setup_platform(

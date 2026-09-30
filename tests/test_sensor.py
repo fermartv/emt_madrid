@@ -10,6 +10,8 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from emt_madrid import ArrivalsNotFoundError
+
 from homeassistant.components.emt_madrid.sensor import (
     ATTR_ATTRIBUTION,
     ATTR_BUS_DISTANCE,
@@ -553,3 +555,83 @@ async def test_setup_platform_invalid_line(hass: HomeAssistant) -> None:
     # Invalid line should not create a sensor
     bus_99_state = hass.states.get("sensor.bus_99_calle_de_alzheimer")
     assert bus_99_state is None
+
+
+def _wrapped_error(cause: Exception) -> ArrivalsNotFoundError:
+    """Return the error emt-madrid raises: every failure re-raised as ArrivalsNotFoundError from its cause."""
+    try:
+        try:
+            raise cause
+        except Exception as err:
+            raise ArrivalsNotFoundError(1234, str(err)) from err
+    except ArrivalsNotFoundError as wrapped:
+        return wrapped
+
+
+def _sensor_with_arrival(mock_emt_client) -> BusLineSensor:
+    """Build a sensor whose line currently shows a bus in 5 min (next in 12)."""
+    mock_stop = MagicMock()
+    mock_stop.stop_name = "Calle de Alzheimer"
+    mock_stop.stop_address = "Calle de Alzheimer, 63"
+    mock_line = MagicMock()
+    mock_line.line_number = "1"
+    mock_line.arrival = 5
+    mock_line.next_arrival = 12
+    mock_stop.stop_lines = [mock_line]
+    mock_stop.bus_arrivals = [MagicMock(line="1", coordinates=[-3.7, 40.4])]
+    return BusLineSensor(
+        emt_client=mock_emt_client,
+        stop=mock_stop,
+        line=mock_line,
+        name="Test Sensor",
+        icon=DEFAULT_ICON,
+        stop_id=1234,
+    )
+
+
+async def test_async_update_no_arrivals_clears_stale_state(hass: HomeAssistant, caplog) -> None:
+    """No bus scheduled: the last arrival must not be kept, and the sensor stays available."""
+    mock_emt_client = AsyncMock()
+    sensor = _sensor_with_arrival(mock_emt_client)
+    mock_emt_client.get_arrivals.side_effect = _wrapped_error(
+        ArrivalsNotFoundError(1234, "No arrival information found for stop 1234")
+    )
+
+    await sensor.async_update()
+
+    assert sensor.state is None
+    assert sensor.available is True
+    attributes = sensor.extra_state_attributes
+    assert attributes[ATTR_NEXT_UP] is None
+    assert attributes[ATTR_BUS_LATITUDE] is None
+    assert "unavailable" not in caplog.text
+
+
+async def test_async_update_api_error_marks_unavailable(hass: HomeAssistant, caplog) -> None:
+    """Any other failure makes the sensor unavailable, logged once per outage, and it recovers."""
+    mock_emt_client = AsyncMock()
+    sensor = _sensor_with_arrival(mock_emt_client)
+    mock_emt_client.get_arrivals.side_effect = _wrapped_error(TimeoutError("read timed out"))
+
+    await sensor.async_update()
+    await sensor.async_update()
+
+    assert sensor.available is False
+    assert caplog.text.count("EMT Madrid API unavailable for stop 1234") == 1
+
+    mock_updated_line = MagicMock()
+    mock_updated_line.line_number = "1"
+    mock_updated_line.arrival = 3
+    mock_updated_line.next_arrival = None
+    mock_updated_stop = MagicMock()
+    mock_updated_stop.stop_lines = [mock_updated_line]
+    mock_updated_stop.bus_arrivals = []
+    mock_emt_client.get_arrivals.side_effect = None
+    mock_emt_client.get_arrivals.return_value = mock_updated_stop
+
+    await sensor.async_update()
+
+    assert sensor.available is True
+    assert sensor.state == 3
+    assert caplog.text.count("EMT Madrid API available again for stop 1234") == 1
+
