@@ -684,4 +684,3 @@ async def test_states_published_by_home_assistant(hass: HomeAssistant, caplog) -
     await async_update_entity(hass, entity_id)
     assert hass.states.get(entity_id).state == "unavailable"
     assert "Update for" not in caplog.text
-

@@ -168,9 +168,11 @@ class BusLineSensor(Entity):
         try:
             self._stop = await self._emt_client.get_arrivals()
         except ArrivalsNotFoundError as err:
-            # emt-madrid wraps every failure in ArrivalsNotFoundError. Only a reply without arrivals
-            # (no bus scheduled, e.g. at night) has an ArrivalsNotFoundError as its cause; errors such
-            # as a rate limit, a network failure or an unknown stop have another cause.
+            # emt-madrid wraps every failure in ArrivalsNotFoundError. Its empty-arrivals branch (no bus
+            # scheduled, e.g. at night) is the one whose cause is itself an ArrivalsNotFoundError; errors
+            # such as a rate limit, a network failure or an unknown stop have another cause. emt-madrid
+            # 1.1.1 does not check every reply code, so an unusual error reply without data also lands in
+            # the empty branch (state unknown, never a stale arrival).
             if isinstance(err.__cause__, ArrivalsNotFoundError):
                 # The library leaves the previous arrivals on the shared stop: clear them for every
                 # line, so no sensor of this stop keeps repeating the last bus.
